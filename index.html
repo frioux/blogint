@@ -241,9 +241,50 @@ augroup END
 
 ---
 
-# The End
+# Misc
+
+`:Link` commands
+
+``` vim
+function! Link(domain, copy)
+  let path = substitute(@%,   '\v^content/', a:domain . '/', '')
+  let path = substitute(path, '\v\.md$', '/', '')
+  if a:copy
+    let @+ = path
+  endif
+  echom path
+endfunction
+command! -bang Link      call Link('https://blog.afoolishmanifesto.com', <bang>0)
+command! -bang LinkShort call Link('http://frew.co',                     <bang>0)
+command! -bang LinkLocal call Link('http://127.0.0.1:1313',              <bang>0)
+```
 
 ---
+
+# Misc
+
+Prettier QuickFix
+
+``` vim
+augroup hugo
+   autocmd!
+   au BufReadPost quickfix setlocal nowrap
+
+   au BufReadPost quickfix
+     \ if w:quickfix_title =~ "^:cgetexpr system('bin/" |
+       \ setl modifiable |
+       \ silent exe ':%s/\v^([^|]+\|){2}\s*//g' |
+       \ setl nomodifiable |
+     \ endif
+augroup END
+```
+
+---
+
+# The End
+
+ * Thanks to all the helpful folks in `#text-editors`
+
     </textarea>
     <script src="https://remarkjs.com/downloads/remark-latest.min.js">
     </script>
