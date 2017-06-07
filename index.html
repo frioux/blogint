@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>fREW's Blog Integration </title>
+    <meta charset="utf-8">
+    <style>
+      @import url(https://fonts.googleapis.com/css?family=Yanone+Kaffeesatz);
+      @import url(https://fonts.googleapis.com/css?family=Droid+Serif:400,700,400italic);
+      @import url(https://fonts.googleapis.com/css?family=Ubuntu+Mono:400,700,400italic);
+
+      body { font-family: 'Droid Serif'; }
+      h1, h2, h3 {
+        font-family: 'Yanone Kaffeesatz';
+        font-weight: normal;
+      }
+      .remark-code, .remark-inline-code { font-family: 'Ubuntu Mono'; }
+    </style>
+  </head>
+  <body>
+    <textarea id="source">
+# My Blog Integration
+
+ Hi I'm fREW
+
+---
+
+# Static Site Generation
+
+ * Cost (51¢, 48¢, 41¢)
+ * Reliability (vms bluh)
+ * Security
+ * Local
+ * Tooling?
+
+---
+
+# Hugo
+
+ * Super Fast (300ms/2.2s)
+ * Markdown
+ * Simple (vs ikiwiki)
+
+```
+---
+title: A Gentle TLS Intro for Perlers
+date: 2014-07-17T09:35:52
+tags: [mitsi, perl, tls, ssl, async, io-async]
+guid: "https://blog.afoolishmanifesto.com/posts/a-gentle-tls-intro-for-perlers"
+---
+At work we've recently been audited for security by one of our customers and one
+of the takeaways was that we need to encrypt more things.  Specifically all
+things.  This lead me on a journey of discovery.  In this post I'll give some
+basic sample code on how to set up and debug a server using TLS, as well as some
+basic info on TLS itself.
+
+[...]
+```
+
+---
+
+# Motivation: Tag Normalization
+
+---
+
+# Methodology
+
+ * I like small, composeable tools
+ * `bin/metadata`
+
+---
+
+# `bin/metadata`
+
+``` perl
+for my $file (@ARGV) {
+  open my $fh, '<', $file;
+  my $cnt = 0;
+  while (<$fh>) {
+    $cnt ++ if $_ eq "---\n";
+    print $_ if $cnt < 2
+  }
+}
+```
+
+---
+
+# False Simplicity
+
+What does this do?
+
+``` perl
+#!/usr/bin/env perl
+my $yaml = `bin/metadata content/posts/*`;
+my @all_data = Load($yaml);
+
+my @tags = map(($_->{tags}||[])->@*, @all_data);
+my %tags;
+
+$tags{$_}++ for @tags;
+
+printf "%3d $_\n", $tags{$_}
+  for sort { $tags{$b} <=> $tags{$a} } sort keys %tags
+```
+
+---
+
+# True Simplicity
+
+What does this do?
+
+``` bash
+#!/bin/dash
+
+exec bin/q \
+   --sql 'SELECT COUNT(*) as c, tag FROM _ GROUP BY tag ORDER BY COUNT(*), tag' \
+   --formatter 'sprintf "%3d  %s", $r{c}, $r{tag}'
+```
+
+---
+
+# `bin/tag-count`
+
+[demo](https://asciinema.org/a/69fkxlmrtts6hl7p6tl8o60w4)
+
+---
+
+# `bin/q`
+
+[See Code](https://gist.github.com/frioux/36dd2bfdc92a81ae98e9bbd83de99205#file-q-pl)
+
+Takes SQL, optional formatter, and optional bind paramters to the SQL.
+
+---
+
+# `q` optimization
+
+ * prepare queries (2x faster)
+ * Skip plenv (bash is slow)
+ * Use YAML::Syck
+ * Don't use modules
+
+---
+
+# `:Chrono`
+
+[demo](https://asciinema.org/a/bfac0jesjlux0acxoc0ojtpvz)
+
+``` bash
+#!/bin/dash
+
+exec bin/q --sql 'SELECT filename, title, date FROM articles ORDER BY date DESC' \
+      --format 'my ($d) = split /T/, $r{date}; "$r{filename}:1:$d $r{title}"'
+```
+
+``` vim
+command! Chrono cgetexpr system('bin/quick-chrono') | cwindow
+```
+
+<img src="./ChronoTriggerLogo.png" />
+
+---
+
+# `:Tagged`
+
+[demo](https://asciinema.org/a/13hf3vtga0m4ydmyi5kzpkv1r)
+
+``` bash
+#!/bin/dash
+
+exec bin/q \
+  --sql 'SELECT filename, title, date FROM _  WHERE tag = ? ORDER BY date DESC' \
+  --format 'my ($d) = split /T/, $r{date}; "$r{filename}:1:$d $r{title}"' \
+  -- "$1"
+```
+
+``` vim
+command! -nargs=1 Tagged  cgetexpr system('bin/tag-files <args>') | cwindow
+```
+
+---
+
+# `g<C-]>`
+
+[demo](https://asciinema.org/a/1sxpj7dmoe25d85m48aa1lrcp)
+
+``` vim
+function! TaggedWord()
+  setlocal iskeyword+=45
+  execute 'Tagged ' . expand('<cword>')
+  setlocal iskeyword-=45
+endfunction
+command! TaggedWord call TaggedWord()
+
+nnoremap g<C-]> :TaggedWord<CR>
+```
+
+---
+
+# Hugo Tag Autocompletion
+
+[demo](https://asciinema.org/a/85b6yyt6dlhc52jv5bbr3e42n)
+
+``` bash
+#!/bin/dash
+
+exec bin/q \
+   --sql 'SELECT tag FROM _ WHERE tag LIKE ? GROUP BY tag ORDER BY COUNT(*) DESC, tag' \
+   --formatter 'sprintf "%s", $r{tag}' \
+   "$1%"
+```
+
+---
+
+# Hugo Tag Autocompletion (cont)
+
+``` vim
+function! CompleteTags(findstart, base)
+  if a:findstart
+    " locate the start of the word
+    let line = getline('.')
+    let start = col('.') - 1
+    while start > 0 && line[start - 1] =~ '\w\|-'
+      let start -= 1
+    endwhile
+    return start
+  else
+    if match(getline('.'), "tags:") == -1
+      return []
+    endif
+
+    return systemlist('bin/tags ' . a:base . '%')
+  endif
+endfun
+
+augroup hugo
+   autocmd!
+
+   au FileType markdown execute 'setlocal omnifunc=CompleteTags'
+augroup END
+```
+
+---
+
+# The End
+
+---
+    </textarea>
+    <script src="https://remarkjs.com/downloads/remark-latest.min.js">
+    </script>
+    <script>
+      var slideshow = remark.create();
+    </script>
+  </body>
+</html>
+
+
